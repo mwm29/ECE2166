@@ -191,6 +191,10 @@ double findHeight(struct Point *point_list, int num_points, double x_pt){
 
 int main ( int argc, char **argv ){
     validate_inputs(argc, argv);
+    clock_t start, end;
+    double cpu_time_used;
+
+    start = clock();
 
     int num_cells, num_edges, num_points;
     struct Cell *cell_list;
@@ -265,8 +269,21 @@ int main ( int argc, char **argv ){
         v_field_valid[i] = 1;
     }
 
-    fprintf(stdout, "%s\t%s\t%s\t%s\n", "x", "y", "pressure", "velocity");
-    for(int i = 0; i < num_points; i++){
-        fprintf(stdout, "%g\t%g\t%g\t\t%g\n", point_list[i].x, point_list[i].y, p_field_mag[i], v_field_mag[i]);
+    FILE *outfile;
+    outfile = fopen("./results.txt", "w");
+
+    if (!outfile) {
+        fprintf(stderr, "Something went wrong when opening outfile\n");
+        exit(3);
     }
+
+    fprintf(outfile, "%s\t%s\t%s\t%s\n", "x", "y", "pressure", "velocity");
+    for(int i = 0; i < num_points; i++){
+        fprintf(outfile, "%g\t%g\t%g\t\t%g\n", point_list[i].x, point_list[i].y, p_field_mag[i], v_field_mag[i]);
+    }
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+
+    fclose(outfile);
+    fprintf(stdout, "Took %g seconds.\n",cpu_time_used);
 }
