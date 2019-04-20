@@ -284,6 +284,15 @@ int main ( int argc, char **argv ){
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
 
+    free(p_field_mag);
+    free(v_field_mag);
+    free(p_field_dir);
+    free(v_field_dir);
+    free(p_field_valid);
+    free(v_field_valid);
+    free(cell_list);
+    free(edge_list);
+    free(point_list);
     fclose(outfile);
     fprintf(stdout, "Took %g seconds.\n",cpu_time_used);
 }
