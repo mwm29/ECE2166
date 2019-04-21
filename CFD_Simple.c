@@ -179,81 +179,113 @@ int main ( int argc, char **argv ){
     }
     //%spy(J)   %for checking sparse matrix
 
+    //calculate velocity field using Navier-Stokes equations
+    for(int j = 1; j < ny; j++){
+        for(int i = 1; i < nx; i++){
+            double a1 = -(u[j*(ny+1)+i+1]*u[j*(ny+1)+i+1] - u[j*(ny+1)+i-1]*u[j*(ny+1)+i-1])/(2*dx) - (u[(j+1)*(ny+1)+i]*(v[(j+1)*(ny+1)+i+1]+v[(j+1)*(ny+1)+i]) - u[j*(ny+1)+i]*(v[j*(ny+1)+i+1]+v[j*(ny+1)+i]))/(4*dy);
+            double a3 = (u[j*(ny+1)+i+1]-2*u[j*(ny+1)+i]+u[j*(ny+1)+i-1])/(dx*dx);
+            double a4 = (u[(j+1)*(ny+1)+i]-2*u[j*(ny+1)+i]+u[(j-1)*(ny+1)+i])/(dy*dy);
 
+            double A = a1+(a3+a4)/ratio;
+
+            u1[j*(ny+1)+1] = u[j*(ny+1)+1] + dt*(A-(p[j*(ny+1)+i]-p[j*(ny+1)+i-1])/(dx));
+        }
+    }
+
+    for(int j = 1; j < ny; j++){
+        for(int i = 1; i <= nx; i++){
+            double b1 = -(v[(j+1)*(ny+1)+i]*v[(j+1)*(ny+1)+i] - v[(j-1)*(ny+1)+i]*v[(j-1)*(ny+1)+i])/(2*dx) - ((v[j*(ny+1)+i+1]*(u[(j-1)*(ny+1)+i]+u[j*(ny+1)+i]))-(v[j*(ny+1)+i-1]*(u[(j-1)*(ny+1)+i-1]+u[j*(ny+1)+i-1])))/(4*dx);
+            double b3 = (v[(j+1)*(ny+1)+i]-2*v[j*(ny+1)+i]+v[(j-1)*(ny+1)+i])/(dy*dy);
+            double b4 = (v[j*(ny+1)+i+1]-2*v[j*(ny+1)+i]+v[j*(ny+1)+i-1])/(dx*dx);
+
+            double B = b1+(b3+b4)/ratio;
+
+            v1[j*(ny+1)+i] = v1[j*(ny+1)+i] + dt*(B-(p[j*(ny+1)+i-1]-p[(j-1)*(ny+1)+i-1])/dy);
+        }
+    }
+
+    // for j=2:Ny
+    //     for i=2:Nx
+    //
+    //         a1=-((u(j,i+1))^2-(u(j,i-1))^2)/(2*dx)  -  (u(j+1,i)*(v(j+1,i+1)+v(j+1,i))-u(j-1,i)*(v(j,i+1)+v(j,i)))/(4*dy);
+    //         a3=(u(j,i+1)-2*u(j,i)+u(j,i-1))/(dx^2);            //solving N-S Eq. for u velocity
+    //         a4=(u(j+1,i)-2*u(j,i)+u(j-1,i))/(dy^2);
+    //
+    //         A=a1+(a3+a4)/ratio;
+    //
+    //         u1(j,i)=u(j,i)+dt*(A-(p(j,i)-p(j,i-1))/dx);
+    //
+    //     end
+    // end
+    // for j=2:Ny
+    //     for i=2:Nx+1
+    //
+    //         b1=-((((v(j+1,i))^2-(v(j-1,i))^2)/(2*dy))  -  ((v(j,i+1)*(u(j-1,i)+u(j,i)))-(v(j,i-1)*(u(j-1,i-1)+u(j,i-1))))/(4*dx));
+    //         b3=(v(j+1,i)-2*v(j,i)+v(j-1,i))/(dy^2);            //solving N-S for v Velocity
+    //         b4=(v(j,i+1)-2*v(j,i)+v(j,i-1))/(dx^2);
+    //
+    //         B=b1+(b3+b4)/ratio;
+    //
+    //         v1(j,i)=v(j,i)+dt*(B-(p(j,i-1)-p(j-1,i-1))/dy);
+    //
+    //     end
+    // end
+
+
+
+
+    //apply boundary conditions
+    // flow around square
+    //u1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
+    //v1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
+
+
+
+
+    %iterate for pressure and velocity corrections
+    for iteration=1:total_iterations           % Iteration Loop
+        for j=1:Ny
+            for i=1:Nx
+
+                residual1(j,i)=(u1(j,i+1)-u1(j,i)+v1(j+1,i)-v1(j,i))/(-J_a*dt);    %calculate residuals from continuity
+
+            end
+        end
+        for j=1:Ny
+            for i=1:Nx
+
+                residual(Nx*(j-1)+i,1)=residual1(j,i);                          %converting residual from a matrix to a vector
+
+            end
+        end
+        dp=J\residual;                                              %changes in pressure field
+        for j=1:Ny
+            for i=1:Nx
+                dp1(j,i)=dp(Nx*(j-1)+i,1);                             %converitng changes in pressure field from a vector to a matrix
+            end
+        end
+        for j=2:Ny
+            for i=2:Nx
+                u1(j,i)=u1(j,i)+relaxation_factor*(dp1(j,i-1)-dp1(j,i))*dt/dx;                 %u velocity correction
+            end
+        end
+        for j=2:Ny
+            for i=2:Nx+1
+                v1(j,i)=v1(j,i)+relaxation_factor*(dp1(j-1,i-1)-dp1(j,i-1))*dt/dy;             %v velocity correction
+            end
+        end
+        p = p + relaxation_factor*dp1;                                      %pressure field correction
+        u = u1;
+        v = v1;
+        residual_max(iteration) = max(abs(residual));                  %output maximum value of residual
+        if residual_max(iteration) < 1.0e-4                            %stop on convergance
+            break
+        end
+    end                  %iterations ends
 
 
 
     /*
-    %calculate velocity field using Navier-Stokes equations
-    for j=2:Ny
-        for i=2:Nx
-
-            a1=-((u(j,i+1))^2-(u(j,i-1))^2)/(2*dx)  -  (u(j+1,i)*(v(j+1,i+1)+v(j+1,i))-u(j-1,i)*(v(j,i+1)+v(j,i)))/(4*dy);
-            a3=(u(j,i+1)-2*u(j,i)+u(j,i-1))/(dx^2);            %solving N-S Eq. for u velocity
-            a4=(u(j+1,i)-2*u(j,i)+u(j-1,i))/(dy^2);
-
-            A=a1+(a3+a4)/ratio;
-
-            u1(j,i)=u(j,i)+dt*(A-(p(j,i)-p(j,i-1))/dx);
-
-        end
-    end
-    for j=2:Ny
-        for i=2:Nx+1
-
-            b1=-((((v(j+1,i))^2-(v(j-1,i))^2)/(2*dy))  -  ((v(j,i+1)*(u(j-1,i)+u(j,i)))-(v(j,i-1)*(u(j-1,i-1)+u(j,i-1))))/(4*dx));
-            b3=(v(j+1,i)-2*v(j,i)+v(j-1,i))/(dy^2);            %solving N-S for v Velocity
-            b4=(v(j,i+1)-2*v(j,i)+v(j,i-1))/(dx^2);
-
-            B=b1+(b3+b4)/ratio;
-
-            v1(j,i)=v(j,i)+dt*(B-(p(j,i-1)-p(j-1,i-1))/dy);
-
-        end
-    end
-    %apply boundary conditions
-    u1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
-    v1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
-    %iterate for pressure and velocity corrections
-     for iteration=1:total_iterations           % Iteration Loop
-    for j=1:Ny
-        for i=1:Nx
-
-            residual1(j,i)=(u1(j,i+1)-u1(j,i)+v1(j+1,i)-v1(j,i))/(-J_a*dt);    %calculate residuals from continuity
-
-        end
-    end
-    for j=1:Ny
-        for i=1:Nx
-
-            residual(Nx*(j-1)+i,1)=residual1(j,i);                          %converting residual from a matrix to a vector
-
-        end
-    end
-    dp=J\residual;                                              %changes in pressure field
-    for j=1:Ny
-        for i=1:Nx
-            dp1(j,i)=dp(Nx*(j-1)+i,1);                             %converitng changes in pressure field from a vector to a matrix
-        end
-    end
-    for j=2:Ny
-        for i=2:Nx
-            u1(j,i)=u1(j,i)+relaxation_factor*(dp1(j,i-1)-dp1(j,i))*dt/dx;                 %u velocity correction
-        end
-    end
-    for j=2:Ny
-        for i=2:Nx+1
-            v1(j,i)=v1(j,i)+relaxation_factor*(dp1(j-1,i-1)-dp1(j,i-1))*dt/dy;             %v velocity correction
-        end
-    end
-    p = p + relaxation_factor*dp1;                                      %pressure field correction
-    u = u1;
-    v = v1;
-    residual_max(iteration) = max(abs(residual));                  %output maximum value of residual
-    if residual_max(iteration) < 1.0e-4                            %stop on convergance
-        break
-    end
-     end                  %iterations ends
     figure(1)
     contourf (p)  %plot pressure field
     hold on
