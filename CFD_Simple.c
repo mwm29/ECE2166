@@ -245,10 +245,14 @@ int main ( int argc, char **argv ){
     //iterate for pressure and velocity corrections
     //for iteration=1:total_iterations           % Iteration Loop
     for(int iteration = 0; iteration < total_iterations; iteration++){
+
         for(int j = 0; j < ny; j++){
             for(int i = 0; i < nx; i++){
                 // index order here?
                 residual1[j*nx+i] = (u1[j*(nx+1)+i+1] - u1[j*(nx+1)+i] + v1[(j+1)*(nx+1)+i] - v1[j*(nx+1)+i])/(-J_a*dt);
+                if(residual1[j*nx+i] > residual_max[iteration]){
+                    residual_max[iteration] = residual1[j*nx+i];
+                }
             }
         }
         // for j=1:Ny
@@ -267,30 +271,61 @@ int main ( int argc, char **argv ){
         //
         //     end
         // end
+
+        //this is non trivial
         dp=J\residual;                                              %changes in pressure field
-        for j=1:Ny
-            for i=1:Nx
-                dp1(j,i)=dp(Nx*(j-1)+i,1);                             %converitng changes in pressure field from a vector to a matrix
-            end
-        end
-        for j=2:Ny
-            for i=2:Nx
-                u1(j,i)=u1(j,i)+relaxation_factor*(dp1(j,i-1)-dp1(j,i))*dt/dx;                 %u velocity correction
-            end
-        end
-        for j=2:Ny
-            for i=2:Nx+1
-                v1(j,i)=v1(j,i)+relaxation_factor*(dp1(j-1,i-1)-dp1(j,i-1))*dt/dy;             %v velocity correction
-            end
-        end
-        p = p + relaxation_factor*dp1;                                      %pressure field correction
-        u = u1;
-        v = v1;
-        residual_max(iteration) = max(abs(residual));                  %output maximum value of residual
-        if residual_max(iteration) < 1.0e-4                            %stop on convergance
-            break
-        end
-    end                  %iterations ends
+
+        //skipped for the same reason as above
+        // for j=1:Ny
+        //     for i=1:Nx
+        //         dp1(j,i)=dp(Nx*(j-1)+i,1);                             %converitng changes in pressure field from a vector to a matrix
+        //     end
+        // end
+
+        for(int j = 1; j < ny; j++){
+            for(int i = 1; i < nx; i++){
+                u1[j*(nx+1)+i] = u1[j*(nx+1)+i] + relaxation_factor*(dp[j*nx+i-1]-dp[j*nx+i])*dt/dx;
+            }
+        }
+        // for j=2:Ny
+        //     for i=2:Nx
+        //         u1(j,i)=u1(j,i)+relaxation_factor*(dp1(j,i-1)-dp1(j,i))*dt/dx;                 %u velocity correction
+        //     end
+        // end
+
+        for(int j = 1; j < ny; j++){
+            for(int i = 1; i <= nx; i++){
+                v1[j*(nx+2)+i] = v1[j*(nx+2)+i] + relaxation_factor*(dp[(j-1)*nx+i-1]-dp[j*nx+i-1])*dt/dy;
+            }
+        }
+        // for j=2:Ny
+        //     for i=2:Nx+1
+        //         v1(j,i)=v1(j,i)+relaxation_factor*(dp1(j-1,i-1)-dp1(j,i-1))*dt/dy;             %v velocity correction
+        //     end
+        // end
+
+        for(int j = 0; j < ny; j++){
+            for(int i = 0; i < nx; i++){
+                p[j*nx+i] = p[j*nx+i] + relaxation_factor * dp1[j*nx+i];
+            }
+        }
+        //p = p + relaxation_factor*dp1;                                      %pressure field correction
+
+        //are these even used?
+        //u = u1;
+        //v = v1;
+
+        //handled in residual loop
+        //residual_max(iteration) = max(abs(residual));                  %output maximum value of residual
+
+        if(residual_max[iteration] < 0.0001){
+            break;
+        }
+    }//iteration ends
+    //     if residual_max(iteration) < 1.0e-4                            %stop on convergance
+    //         break
+    //     end
+    // end                  %iterations ends
 
 
 
