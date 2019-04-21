@@ -182,25 +182,25 @@ int main ( int argc, char **argv ){
     //calculate velocity field using Navier-Stokes equations
     for(int j = 1; j < ny; j++){
         for(int i = 1; i < nx; i++){
-            double a1 = -(u[j*(ny+1)+i+1]*u[j*(ny+1)+i+1] - u[j*(ny+1)+i-1]*u[j*(ny+1)+i-1])/(2*dx) - (u[(j+1)*(ny+1)+i]*(v[(j+1)*(ny+1)+i+1]+v[(j+1)*(ny+1)+i]) - u[j*(ny+1)+i]*(v[j*(ny+1)+i+1]+v[j*(ny+1)+i]))/(4*dy);
-            double a3 = (u[j*(ny+1)+i+1]-2*u[j*(ny+1)+i]+u[j*(ny+1)+i-1])/(dx*dx);
-            double a4 = (u[(j+1)*(ny+1)+i]-2*u[j*(ny+1)+i]+u[(j-1)*(ny+1)+i])/(dy*dy);
+            double a1 = -(u[j*(nx+1)+i+1]*u[j*(nx+1)+i+1] - u[j*(nx+1)+i-1]*u[j*(nx+1)+i-1])/(2*dx) - (u[(j+1)*(nx+1)+i]*(v[(j+1)*(nx+2)+i+1]+v[(j+1)*(nx+2)+i]) - u[j*(nx+1)+i]*(v[j*(nx+2)+i+1]+v[j*(nx+2)+i]))/(4*dy);
+            double a3 = (u[j*(nx+1)+i+1]-2*u[j*(nx+1)+i]+u[j*(nx+1)+i-1])/(dx*dx);
+            double a4 = (u[(j+1)*(nx+1)+i]-2*u[j*(nx+1)+i]+u[(j-1)*(nx+1)+i])/(dy*dy);
 
             double A = a1+(a3+a4)/ratio;
 
-            u1[j*(ny+1)+1] = u[j*(ny+1)+1] + dt*(A-(p[j*(ny+1)+i]-p[j*(ny+1)+i-1])/(dx));
+            u1[j*(nx+1)+1] = u[j*(nx+1)+1] + dt*(A-(p[j*(nx+1)+i]-p[j*(nx+1)+i-1])/(dx));
         }
     }
 
     for(int j = 1; j < ny; j++){
         for(int i = 1; i <= nx; i++){
-            double b1 = -(v[(j+1)*(ny+1)+i]*v[(j+1)*(ny+1)+i] - v[(j-1)*(ny+1)+i]*v[(j-1)*(ny+1)+i])/(2*dx) - ((v[j*(ny+1)+i+1]*(u[(j-1)*(ny+1)+i]+u[j*(ny+1)+i]))-(v[j*(ny+1)+i-1]*(u[(j-1)*(ny+1)+i-1]+u[j*(ny+1)+i-1])))/(4*dx);
-            double b3 = (v[(j+1)*(ny+1)+i]-2*v[j*(ny+1)+i]+v[(j-1)*(ny+1)+i])/(dy*dy);
-            double b4 = (v[j*(ny+1)+i+1]-2*v[j*(ny+1)+i]+v[j*(ny+1)+i-1])/(dx*dx);
+            double b1 = -(v[(j+1)*(nx+2)+i]*v[(j+1)*(nx+2)+i] - v[(j-1)*(nx+2)+i]*v[(j-1)*(nx+2)+i])/(2*dx) - ((v[j*(nx+2)+i+1]*(u[(j-1)*(nx+1)+i]+u[j*(nx+1)+i]))-(v[j*(nx+2)+i-1]*(u[(j-1)*(nx+1)+i-1]+u[j*(nx+1)+i-1])))/(4*dx);
+            double b3 = (v[(j+1)*(nx+2)+i]-2*v[j*(nx+2)+i]+v[(j-1)*(nx+2)+i])/(dy*dy);
+            double b4 = (v[j*(nx+2)+i+1]-2*v[j*(nx+2)+i]+v[j*(nx+2)+i-1])/(dx*dx);
 
             double B = b1+(b3+b4)/ratio;
 
-            v1[j*(ny+1)+i] = v1[j*(ny+1)+i] + dt*(B-(p[j*(ny+1)+i-1]-p[(j-1)*(ny+1)+i-1])/dy);
+            v1[j*(nx+1)+i] = v1[j*(nx+1)+i] + dt*(B-(p[j*(nx+1)+i-1]-p[(j-1)*(nx+1)+i-1])/dy);
         }
     }
 
@@ -242,22 +242,31 @@ int main ( int argc, char **argv ){
 
 
 
-    %iterate for pressure and velocity corrections
-    for iteration=1:total_iterations           % Iteration Loop
-        for j=1:Ny
-            for i=1:Nx
+    //iterate for pressure and velocity corrections
+    //for iteration=1:total_iterations           % Iteration Loop
+    for(int iteration = 0; iteration < total_iterations; iteration++){
+        for(int j = 0; j < ny; j++){
+            for(int i = 0; i < nx; i++){
+                // index order here?
+                residual1[j*nx+i] = (u1[j*(nx+1)+i+1] - u1[j*(nx+1)+i] + v1[(j+1)*(nx+1)+i] - v1[j*(nx+1)+i])/(-J_a*dt);
+            }
+        }
+        // for j=1:Ny
+        //     for i=1:Nx
+        //
+        //         residual1(j,i)=(u1(j,i+1)-u1(j,i)+v1(j+1,i)-v1(j,i))/(-J_a*dt);    %calculate residuals from continuity
+        //
+        //     end
+        // end
 
-                residual1(j,i)=(u1(j,i+1)-u1(j,i)+v1(j+1,i)-v1(j,i))/(-J_a*dt);    %calculate residuals from continuity
-
-            end
-        end
-        for j=1:Ny
-            for i=1:Nx
-
-                residual(Nx*(j-1)+i,1)=residual1(j,i);                          %converting residual from a matrix to a vector
-
-            end
-        end
+        //skipped this because residual1 is already a vector
+        // for j=1:Ny
+        //     for i=1:Nx
+        //
+        //         residual(Nx*(j-1)+i,1)=residual1(j,i);                          %converting residual from a matrix to a vector
+        //
+        //     end
+        // end
         dp=J\residual;                                              %changes in pressure field
         for j=1:Ny
             for i=1:Nx
