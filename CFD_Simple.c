@@ -5,6 +5,11 @@
 #include <time.h>
 #include <float.h>
 //#include <mpi.h>
+#define USE_LIB
+#ifdef USE_LIB
+#include <gsl/gsl_linalg.h>
+#include <gsl/gsl_blas.h>
+#endif
 
 int sparse_find(const int *S_row, const int *S_col, int S_size, int row, int col){
     for(int i = 0; i < S_size; i++){
@@ -23,13 +28,94 @@ double sparse_row_sum(const int *S_row, const double *S, int S_size, int row){
     }
     return sum;
 }
+#ifdef USE_LIB
+void gsl_mat_inv(gsl_matrix *A, double **A_inv, int nxy){
+    gsl_matrix * gA_t = gsl_matrix_alloc (nxy, nxy);
+    gsl_matrix_transpose_memcpy (gA_t, A);
 
+
+    gsl_matrix * U = gsl_matrix_alloc (nxy, nxy);
+    gsl_matrix * V = gsl_matrix_alloc (nxy, nxy);
+    gsl_vector * S = gsl_vector_alloc (nxy);
+
+    gsl_vector * work = gsl_vector_alloc (nxy);
+    gsl_linalg_SV_decomp (gA_t, V, S, work);
+    gsl_vector_free(work);
+
+    gsl_matrix_memcpy (U, gA_t);
+
+
+
+
+    gsl_matrix * Sp = gsl_matrix_alloc (nxy, nxy);
+    gsl_matrix_set_zero (Sp);
+    for (int i = 0; i < nxy; i++)
+    	gsl_matrix_set (Sp, i, i, gsl_vector_get(S, i));	// Vector 'S' to matrix 'Sp'
+
+    gsl_permutation * p = gsl_permutation_alloc (nxy);
+    int signum;
+    gsl_linalg_LU_decomp (Sp, p, &signum);				// Computing the LU decomposition
+
+    // Compute the inverse like in the MATLAB script
+
+    gsl_matrix * SI = gsl_matrix_calloc (nxy, nxy);
+
+    for (int i = 0; i < nxy; i++) {
+      if (gsl_vector_get (S, i) > 0.0000000001)
+        gsl_matrix_set (SI, i, i, 1.0 / gsl_vector_get (S, i));
+    }
+
+    gsl_matrix * VT = gsl_matrix_alloc (nxy, nxy);
+    gsl_matrix_transpose_memcpy (VT, V);					// Tranpose of V
+
+
+    //THE PSEUDOINVERSE//
+    //----------------------------------------------------------
+    //Computation of the pseudoinverse of trans(A) as pinv(A) = U·inv(S).trans(V)   with trans(A) = U.S.trans(V)
+    //----------------------------------------------------------
+    gsl_matrix * SIpVT = gsl_matrix_alloc (nxy, nxy);
+    gsl_blas_dgemm (CblasNoTrans, CblasNoTrans,				// Calculating  inv(S).trans(V)
+                	1.0, SI, VT,
+                	0.0, SIpVT);
+
+
+    gsl_matrix * pinv = gsl_matrix_alloc (nxy, nxy);	// Calculating  U·inv(S).trans(V)
+    gsl_blas_dgemm (CblasNoTrans, CblasNoTrans,
+                	1.0, U, SIpVT,
+                	0.0, pinv);
+
+    //copy to c matrix
+    for(int i = 0; i < nxy; i++){
+        gsl_vector_view row = gsl_matrix_row(pinv, i);
+        for(int j = 0; j < nxy; j++){
+            (*A_inv)[i*nxy+j] = row.vector.data[j];
+            //fprintf(stdout,"%4.2g\t",row.vector.data[j]);
+        }
+        //fprintf(stdout,"\n");
+    }
+
+
+    gsl_matrix_free(pinv);
+    gsl_matrix_free(SIpVT);
+    gsl_matrix_free(VT);
+    gsl_matrix_free(SI);
+    gsl_permutation_free(p);
+    gsl_matrix_free(Sp);
+    gsl_vector_free(S);
+    gsl_matrix_free(V);
+    gsl_matrix_free(U);
+    gsl_matrix_free(gA_t);
+}
+#endif
 
 int main ( int argc, char **argv ){
+    clock_t start, end;
+    double cpu_time_used;
+    start = clock();
     //space variables (ENTER)
     int nx = 50;           //number of columns
     int ny = 50;           //number of rows
-    nx = 5;ny = 5;
+    nx = 10;ny = 10;
     int nxy=nx*ny;
     //discretization variables (ENTER)
     double dx = 1;       //x-grid size
@@ -73,12 +159,17 @@ int main ( int argc, char **argv ){
     double dt = 1;
     double relaxation_factor = 0.5;
     int total_iterations = 1000;
+    //total_iterations = 1;
     //residual_max = zeros(total_iterations,1);
     double *residual_max = calloc(total_iterations,sizeof(double));
 
     //check CFL criteria (CHECK!)
     //CFL_x = max(max(u))*dt/dx;
     //CFL_y = max(max(u))*dt/dy;
+
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    fprintf(stdout, "Setup finished at %g seconds.\n",cpu_time_used);
 
     //calculate sparse matrix (AUTO)
     double J_a = 2*(1/(dx*dx)+1/(dy*dy));
@@ -87,6 +178,7 @@ int main ( int argc, char **argv ){
     //int *J_row = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
     //int *J_col = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
     //double *J = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(double));//this size was too small
+    #ifdef USE_SPARSE
     int *J_row = malloc(nxy*5*sizeof(int));
     int *J_col = malloc(nxy*5*sizeof(int));
     double *J = malloc(nxy*5*sizeof(double));
@@ -201,6 +293,96 @@ int main ( int argc, char **argv ){
     // }
     // exit(0);
     //%spy(J)   %for checking sparse matrix
+    #endif
+    #ifndef USE_SPARSE
+    #ifndef USE_LIB
+    double *J = calloc(nxy*nxy,sizeof(double));
+    for(int i = 0; i < nxy-1; i++){
+        J[i*nxy+i+1] = J_b/J_a;
+    }
+    for(int i = 1; i < nxy; i++){
+        J[i*nxy+i-1] = J_b/J_a;
+    }
+    for(int i = 0; i < nxy-nx; i++){
+        J[i*nxy+i+nx] = J_c/J_a;
+    }
+    for(int i = 0; i < nxy-nx; i++){
+        J[(i+nx)*nxy+i] = J_c/J_a;
+    }
+    for(int i = 1; i < ny; i++){
+        J[(i*nx)*nxy+i*nx-1] = 0.0;
+        J[(i*nx-1)*nxy+i*nx] = 0.0;
+    }
+    double sum;
+    for(int i = 0; i < nxy; i++){
+        sum = 0.0;
+        for(int j = 0; j < nxy; j++){
+            sum += J[i*nxy+j];
+        }
+        J[i*nxy+i] = -sum;
+    }
+    #endif
+    #ifdef USE_LIB
+    double *J_inv = calloc(nxy*nxy,sizeof(double));
+    gsl_matrix *mat = gsl_matrix_calloc(nxy, nxy);
+    //gsl_matrix *inv = gsl_matrix_calloc(nxy, nxy);
+    //gsl_permutation * perm = gsl_permutation_alloc(nxy);
+    //int signum;
+    for(int i = 0; i < nxy-1; i++){
+        //J[i*nxy+i+1] = J_b/J_a;
+        gsl_matrix_set(mat, i, i+1, J_b/J_a);
+    }
+    for(int i = 1; i < nxy; i++){
+        //J[i*nxy+i-1] = J_b/J_a;
+        gsl_matrix_set(mat, i, i-1, J_b/J_a);
+    }
+    for(int i = 0; i < nxy-nx; i++){
+        //J[i*nxy+i+nx] = J_c/J_a;
+        gsl_matrix_set(mat, i, i+nx, J_c/J_a);
+    }
+    for(int i = 0; i < nxy-nx; i++){
+        //J[(i+nx)*nxy+i] = J_c/J_a;
+        gsl_matrix_set(mat, i+nx, i, J_c/J_a);
+    }
+    for(int i = 1; i < ny; i++){
+        //J[(i*nx)*nxy+i*nx-1] = 0.0;
+        //J[(i*nx-1)*nxy+i*nx] = 0.0;
+        gsl_matrix_set(mat, i*nx, i*nx-1, 0.0);
+        gsl_matrix_set(mat, i*nx-1, i*nx, 0.0);
+    }
+    double sum;
+    for(int i = 0; i < nxy; i++){
+        //J[i*nxy+i] = sum;
+        gsl_vector_view row = gsl_matrix_row(mat, i);
+        sum = 0.0;
+        for(int j = 0; j < nxy; j++){
+            sum += row.vector.data[j];
+        }
+        gsl_matrix_set(mat, i, i, -sum);
+    }
+    gsl_mat_inv(mat, &J_inv, nxy);
+    //gsl_linalg_LU_decomp(mat, perm, &signum);
+    //gsl_linalg_LU_invert(mat, perm, inv);
+    // for(int i = 0; i < nxy; i++){
+    //     gsl_vector_view row = gsl_matrix_row(mat, i);
+    //     for(int j = 0; j < nxy; j++){
+    //         //J_inv[i*nxy+j] = row.vector.data[j];
+    //         fprintf(stdout,"%4.2g\t",row.vector.data[j]);
+    //     }
+    //     fprintf(stdout,"\n");
+    // }
+
+
+    gsl_matrix_free(mat);
+    //gsl_matrix_free(inv);
+    //gsl_permutation_free(perm);
+    #endif
+
+    #endif
+
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    fprintf(stdout, "Mat inv finished at %g seconds.\n",cpu_time_used);
 
     //calculate velocity field using Navier-Stokes equations
     for(int j = 1; j < ny; j++){
@@ -211,7 +393,7 @@ int main ( int argc, char **argv ){
 
             double A = a1+(a3+a4)/ratio;
 
-            u1[j*(nx+1)+1] = u[j*(nx+1)+1] + dt*(A-(p[j*(nx+1)+i]-p[j*(nx+1)+i-1])/(dx));
+            u1[j*(nx+1)+1] = u[j*(nx+1)+1] + dt*(A-(p[j*(nx)+i]-p[j*(nx)+i-1])/(dx));
         }
     }
 
@@ -223,7 +405,7 @@ int main ( int argc, char **argv ){
 
             double B = b1+(b3+b4)/ratio;
 
-            v1[j*(nx+1)+i] = v1[j*(nx+1)+i] + dt*(B-(p[j*(nx+1)+i-1]-p[(j-1)*(nx+1)+i-1])/dy);
+            v1[j*(nx+2)+i] = v1[j*(nx+2)+i] + dt*(B-(p[j*(nx)+i-1]-p[(j-1)*(nx)+i-1])/dy);
         }
     }
 
@@ -257,22 +439,29 @@ int main ( int argc, char **argv ){
 
 
 
+
     //apply boundary conditions
     // flow around square
     //u1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
     //v1(Nx/2-Nx/5+2:Nx/2+Nx/5,Ny/2-Ny/5+2:Ny/2+Ny/5) = 0.0;
+    for(int j = nx/2-nx/5+1; j < nx/2+nx/5; j++){
+        for(int i = ny/2-ny/5+1; i < ny/2+ny/5; i++){
+            u1[j*(nx+1)+i] = 0.0;
+            v1[j*(nx+2)+i] = 0.0;
+        }
+    }
 
 
-
-
+    int iteration;
     //iterate for pressure and velocity corrections
     //for iteration=1:total_iterations           % Iteration Loop
-    for(int iteration = 0; iteration < total_iterations; iteration++){
+    for(iteration = 0; iteration < total_iterations; iteration++){
 
         for(int j = 0; j < ny; j++){
             for(int i = 0; i < nx; i++){
                 // index order here?
-                residual1[j*nx+i] = (u1[j*(nx+1)+i+1] - u1[j*(nx+1)+i] + v1[(j+1)*(nx+1)+i] - v1[j*(nx+1)+i])/(-J_a*dt);
+                residual1[j*nx+i] = (u1[j*(nx+1)+i+1] - u1[j*(nx+1)+i] + v1[(j+1)*(nx+2)+i] - v1[j*(nx+2)+i])/(-J_a*dt);
+                //fprintf(stdout,"%g\n",residual1[j*nx+i]);
                 if(residual1[j*nx+i] > residual_max[iteration]){
                     residual_max[iteration] = residual1[j*nx+i];
                 }
@@ -297,6 +486,17 @@ int main ( int argc, char **argv ){
 
         //this is non trivial
         //dp=J\residual;                                              %changes in pressure field
+        for(int i = 0; i < nxy; i++){
+            sum = 0.0;
+            for(int j = 0; j < nxy; j++){
+                sum += J_inv[i*nxy+j] * residual1[j];
+                // if(residual1[j] > 0.1 || residual1[j] < -0.1){
+                //     fprintf(stdout,"%d %d %g %g %g %g\n",i,j,J_inv[i*nxy+j],residual[j],J_inv[i*nxy+j] * residual[j],sum);
+                // }
+            }
+            dp[i] = sum;
+            //fprintf(stdout,"%d %g\n",i,sum);
+        }
 
         //skipped for the same reason as above
         // for j=1:Ny
@@ -329,7 +529,7 @@ int main ( int argc, char **argv ){
 
         for(int j = 0; j < ny; j++){
             for(int i = 0; i < nx; i++){
-                p[j*nx+i] = p[j*nx+i] + relaxation_factor * dp1[j*nx+i];
+                p[j*nx+i] = p[j*nx+i] + relaxation_factor * dp[j*nx+i];
             }
         }
         //p = p + relaxation_factor*dp1;                                      %pressure field correction
@@ -378,4 +578,57 @@ int main ( int argc, char **argv ){
     ylabel ('Maximum value of residual')
     title ('Convergence plot')
     */
+    FILE *out_fp = fopen("p_CFD_Res.csv", "w");
+    for(int j = 0; j < ny; j++){
+        for(int i = 0; i < nx; i++){
+            fprintf(out_fp,"%g",p[j*nx+i]);
+            if(i == nx-1){
+                fprintf(out_fp,"\n");
+            }else{
+                fprintf(out_fp,",");
+            }
+        }
+    }
+    fclose(out_fp);
+
+    out_fp = fopen("u_CFD_Res.csv", "w");
+    for(int j = 0; j < ny+1; j++){
+        for(int i = 0; i < nx+1; i++){
+            fprintf(out_fp,"%g",u1[j*(nx+1)+i]);
+            if(i == nx){
+                fprintf(out_fp,"\n");
+            }else{
+                fprintf(out_fp,",");
+            }
+        }
+    }
+    fclose(out_fp);
+
+    out_fp = fopen("v_CFD_Res.csv", "w");
+    for(int j = 0; j < ny+1; j++){
+        for(int i = 0; i < nx+2; i++){
+            fprintf(out_fp,"%g",v1[j*(nx+2)+i]);
+            if(i == nx+1){
+                fprintf(out_fp,"\n");
+            }else{
+                fprintf(out_fp,",");
+            }
+        }
+    }
+    fclose(out_fp);
+
+    out_fp = fopen("r_CFD_Res.csv", "w");
+    for(int i = 0; i < iteration; i++){
+        fprintf(out_fp,"%g",residual_max[i]);
+        if(i == iteration-1){
+            fprintf(out_fp,"\n");
+        }else{
+            fprintf(out_fp,",");
+        }
+    }
+    fclose(out_fp);
+
+    end = clock();
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    fprintf(stdout, "Program ended at %g seconds.\n",cpu_time_used);
 }
