@@ -115,7 +115,7 @@ int main ( int argc, char **argv ){
     //space variables (ENTER)
     int nx = 50;           //number of columns
     int ny = 50;           //number of rows
-    nx = 10;ny = 10;
+    //nx = 10;ny = 10;
     int nxy=nx*ny;
     //discretization variables (ENTER)
     double dx = 1;       //x-grid size
@@ -545,6 +545,7 @@ int main ( int argc, char **argv ){
             break;
         }
     }//iteration ends
+    fprintf(stdout,"Exited after %d iterations\n",iteration);
     //     if residual_max(iteration) < 1.0e-4                            %stop on convergance
     //         break
     //     end
