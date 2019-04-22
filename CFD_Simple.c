@@ -29,6 +29,7 @@ int main ( int argc, char **argv ){
     //space variables (ENTER)
     int nx = 50;           //number of columns
     int ny = 50;           //number of rows
+    nx = 5;ny = 5;
     int nxy=nx*ny;
     //discretization variables (ENTER)
     double dx = 1;       //x-grid size
@@ -83,10 +84,13 @@ int main ( int argc, char **argv ){
     double J_a = 2*(1/(dx*dx)+1/(dy*dy));
     double J_b = -1/(dy*dy);
     double J_c = -1/(dx*dx);
-    int *J_row = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
-    int *J_col = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
-    double *J = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(double));
-    for(int i = 0; i < ((nx-2)*(ny-2)*4+nx*ny); i++){
+    //int *J_row = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
+    //int *J_col = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(int));
+    //double *J = malloc(((nx-2)*(ny-2)*4+nx*ny)*sizeof(double));//this size was too small
+    int *J_row = malloc(nxy*5*sizeof(int));
+    int *J_col = malloc(nxy*5*sizeof(int));
+    double *J = malloc(nxy*5*sizeof(double));
+    for(int i = 0; i < nxy*5; i++){
         J_row[i] = -1;
         J_col[i] = -1;
     }
@@ -108,7 +112,7 @@ int main ( int argc, char **argv ){
     //for i=2:Nx*Ny
         //J(i,i-1)=J_b/J_a;
     //end
-    for(int i = 0; i < nxy; i++){
+    for(int i = 1; i < nxy; i++){
         // if(sparse_find(J_row, J_col, J_num, i, i-1) != -1){
         //     fprintf(stderr,"repeat2\n");
         // }
@@ -124,6 +128,7 @@ int main ( int argc, char **argv ){
         // if(sparse_find(J_row, J_col, J_num, i, i+nx) != -1){
         //     fprintf(stderr,"repeat3\n");
         // }
+        //fprintf(stdout,"%d %d\n",i,i+nx);
         J_row[J_num] = i;
         J_col[J_num] = i+nx;
         J[J_num] = J_c/J_a;
@@ -145,8 +150,8 @@ int main ( int argc, char **argv ){
     //J(i*Nx+1,i*Nx)=0;
     //J(i*Nx,i*Nx+1)=0;
     //end
-    for(int i = 0; i < ny-1; i++){
-        int index = sparse_find(J_row, J_col, J_num, i*nx+1, i*nx);
+    for(int i = 1; i < ny; i++){
+        int index = sparse_find(J_row, J_col, J_num, i*nx, i*nx-1);
         // if(index == -1){
         //     fprintf(stderr,"not found1\n");
         // }
@@ -154,14 +159,18 @@ int main ( int argc, char **argv ){
         J_row[index] = J_row[J_num];
         J_col[index] = J_col[J_num];
         J[index] = J[J_num];
+        J_row[J_num] = -1;
+        J_col[J_num] = -1;
 
-        index = sparse_find(J_row, J_col, J_num, i*nx, i*nx+1);
+        index = sparse_find(J_row, J_col, J_num, i*nx-1, i*nx);
         // if(index == -1){
         //     fprintf(stderr,"not found2\n");
         // }
         J_num--;
         J_row[index] = J_row[J_num];
         J_col[index] = J_col[J_num];
+        J_row[J_num] = -1;
+        J_col[J_num] = -1;
         J[index] = J[J_num];
     }
 
@@ -174,9 +183,23 @@ int main ( int argc, char **argv ){
         // }
         J_row[J_num] = i;
         J_col[J_num] = i;
-        J[J_num] = sparse_row_sum(J_row, J, J_num, i);
+        J[J_num] = -1.0*sparse_row_sum(J_row, J, J_num, i);
         J_num++;
     }
+    // fprintf(stdout,"%d %d\n", 4*nxy, J_num);
+    // for(int i = 0; i < nxy; i++){
+    //     for(int j = 0; j < nxy; j++){
+    //         int index = sparse_find(J_row, J_col, J_num, i, j);
+    //         //if((index != -1) && (J[index] > 0.00000001 || J[index] < -0.00000001)){
+    //         if((index != -1) ){
+    //             fprintf(stdout,"%4.2g\t",J[index]);
+    //         }else{
+    //             fprintf(stdout,"0.0\t");
+    //         }
+    //     }
+    //     fprintf(stdout,"\n");
+    // }
+    // exit(0);
     //%spy(J)   %for checking sparse matrix
 
     //calculate velocity field using Navier-Stokes equations
@@ -273,7 +296,7 @@ int main ( int argc, char **argv ){
         // end
 
         //this is non trivial
-        dp=J\residual;                                              %changes in pressure field
+        //dp=J\residual;                                              %changes in pressure field
 
         //skipped for the same reason as above
         // for j=1:Ny
